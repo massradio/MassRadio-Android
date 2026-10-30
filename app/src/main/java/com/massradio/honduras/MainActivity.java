@@ -2,215 +2,305 @@
 package com.massradio.honduras;
 
 import android.app.Activity;
-import android.content.Intent;
-import android.content.Context;
-import android.content.BroadcastReceiver;
-import android.content.IntentFilter;
-import android.media.AudioManager;
-import android.os.Build;
 import android.os.Bundle;
+import android.os.Build;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.BroadcastReceiver;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioManager;
+import android.net.Uri;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
 
-    private TextView status;
-    private Button playButton;
-    private Button stopButton;
+    private TextView estado;
+    private TextView botonPlay;
+    private boolean reproduciendo = false;
+    private AudioManager audio;
 
-    private final BroadcastReceiver receiver =
-            new BroadcastReceiver() {
+    private final BroadcastReceiver receptor = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            String message = intent.getStringExtra("status");
+            String mensaje = intent.getStringExtra("status");
+            if (mensaje == null) return;
 
-            if (message != null && status != null) {
-                status.setText(message);
+            estado.setText(mensaje);
+
+            if (mensaje.equals("Reproduciendo en vivo")) {
+                reproduciendo = true;
+                actualizarBoton();
+            } else if (mensaje.equals("Reproducción detenida")) {
+                reproduciendo = false;
+                actualizarBoton();
             }
         }
     };
 
-    private GradientDrawable background(int color) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(color);
-        drawable.setCornerRadius(28);
-        return drawable;
+    private GradientDrawable fondo(int color, int radio) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(radio);
+        return d;
     }
 
-    private Button button(String label, int color) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setTextColor(Color.WHITE);
-        b.setTextSize(17);
-        b.setAllCaps(false);
-        b.setBackground(background(color));
-        return b;
+    private TextView texto(String valor, int tamano, int color) {
+        TextView t = new TextView(this);
+        t.setText(valor);
+        t.setTextSize(tamano);
+        t.setTextColor(color);
+        t.setGravity(Gravity.CENTER);
+        return t;
     }
 
-    private void sendRadioCommand(String action) {
-        Intent intent = new Intent(this, RadioService.class);
-        intent.setAction(action);
+    private void comando(String accion) {
+        Intent i = new Intent(this, RadioService.class);
+        i.setAction(accion);
 
-        if (RadioService.PLAY.equals(action)) {
-            startForegroundService(intent);
+        if (RadioService.PLAY.equals(accion)) {
+            if (Build.VERSION.SDK_INT >= 26) {
+                startForegroundService(i);
+            } else {
+                startService(i);
+            }
         } else {
-            startService(intent);
+            startService(i);
         }
+    }
+
+    private void actualizarBoton() {
+        botonPlay.setText(reproduciendo ? "Ⅱ" : "▶");
+    }
+
+    private void abrir(String direccion) {
+        try {
+            startActivity(new Intent(
+                    Intent.ACTION_VIEW, Uri.parse(direccion)));
+        } catch (Exception e) {
+            estado.setText("No se pudo abrir el enlace");
+        }
+    }
+
+    private void espacio(LinearLayout contenedor, int alto) {
+        View v = new View(this);
+        contenedor.addView(v,
+                new LinearLayout.LayoutParams(1, alto));
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(Color.rgb(7, 14, 30));
-        getWindow().setNavigationBarColor(Color.rgb(7, 14, 30));
+        getWindow().setStatusBarColor(Color.BLACK);
+        getWindow().setNavigationBarColor(Color.BLACK);
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(35, 45, 35, 30);
-        root.setBackgroundColor(Color.rgb(9, 20, 43));
+        audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Color.BLACK);
+
+        LinearLayout pagina = new LinearLayout(this);
+        pagina.setOrientation(LinearLayout.VERTICAL);
+        pagina.setGravity(Gravity.CENTER_HORIZONTAL);
+        pagina.setPadding(24, 18, 24, 30);
+
+        scroll.addView(pagina);
+        setContentView(scroll);
+
+        TextView titulo = texto(
+                "MassRadio", 29, Color.WHITE);
+        titulo.setTypeface(null, Typeface.BOLD);
+        pagina.addView(titulo);
+
+        espacio(pagina, 35);
 
         ImageView logo = new ImageView(this);
         logo.setImageResource(R.drawable.logo_massradio);
-        logo.setAdjustViewBounds(true);
-        logo.setMaxHeight(250);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logo.setBackground(fondo(Color.WHITE, 24));
+        logo.setPadding(12, 12, 12, 12);
 
-        root.addView(logo, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 230));
+        LinearLayout.LayoutParams lpLogo =
+                new LinearLayout.LayoutParams(270, 270);
+        lpLogo.gravity = Gravity.CENTER;
+        pagina.addView(logo, lpLogo);
 
-        TextView title = new TextView(this);
-        title.setText("MASSRADIO");
-        title.setTextSize(29);
-        title.setTypeface(null, Typeface.BOLD);
-        title.setTextColor(Color.WHITE);
-        title.setGravity(Gravity.CENTER);
-        root.addView(title);
+        espacio(pagina, 30);
 
-        TextView slogan = new TextView(this);
-        slogan.setText("Donde quieres estar siempre");
-        slogan.setTextColor(Color.LTGRAY);
-        slogan.setTextSize(15);
-        slogan.setGravity(Gravity.CENTER);
-        root.addView(slogan);
+        TextView lema = texto(
+                "Donde quieres estar siempre",
+                16, 0xFFBBBBBB);
+        pagina.addView(lema);
 
-        TextView live = new TextView(this);
-        live.setText("● EN VIVO");
-        live.setTextColor(Color.RED);
-        live.setTextSize(20);
-        live.setGravity(Gravity.CENTER);
-        live.setPadding(0, 35, 0, 20);
-        root.addView(live);
+        espacio(pagina, 15);
 
-        status = new TextView(this);
-        status.setText("Listo para escuchar");
-        status.setTextColor(Color.WHITE);
-        status.setGravity(Gravity.CENTER);
-        status.setTextSize(16);
-        root.addView(status);
+        estado = texto(
+                "Listo para escuchar",
+                18, Color.WHITE);
+        estado.setTypeface(null, Typeface.BOLD);
+        pagina.addView(estado);
 
-        playButton = button("▶ REPRODUCIR",
-                Color.rgb(194, 24, 42));
+        espacio(pagina, 35);
 
-        LinearLayout.LayoutParams params =
-                new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, 65);
-        params.setMargins(0, 30, 0, 12);
+        LinearLayout filaVolumen = new LinearLayout(this);
+        filaVolumen.setGravity(Gravity.CENTER_VERTICAL);
+        filaVolumen.setOrientation(LinearLayout.HORIZONTAL);
 
-        root.addView(playButton, params);
+        TextView menos = texto("◀", 20, Color.WHITE);
+        filaVolumen.addView(menos);
 
-        playButton.setOnClickListener(v -> {
-            sendRadioCommand(RadioService.PLAY);
-            status.setText("Conectando...");
-        });
-
-        stopButton = button("■ DETENER",
-                Color.rgb(75, 85, 105));
-
-        root.addView(stopButton,
-                new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, 65));
-
-        stopButton.setOnClickListener(v -> {
-            sendRadioCommand(RadioService.STOP);
-            status.setText("Reproducción detenida");
-        });
-
-        TextView volumeLabel = new TextView(this);
-        volumeLabel.setText("VOLUMEN");
-        volumeLabel.setTextColor(Color.WHITE);
-        volumeLabel.setPadding(0, 30, 0, 5);
-        root.addView(volumeLabel);
-
-        AudioManager audio =
-                (AudioManager) getSystemService(AUDIO_SERVICE);
-
-        SeekBar volume = new SeekBar(this);
-        int max = audio.getStreamMaxVolume(
-                AudioManager.STREAM_MUSIC);
-        volume.setMax(max);
-        volume.setProgress(audio.getStreamVolume(
+        SeekBar volumen = new SeekBar(this);
+        volumen.setMax(audio.getStreamMaxVolume(
+                AudioManager.STREAM_MUSIC));
+        volumen.setProgress(audio.getStreamVolume(
                 AudioManager.STREAM_MUSIC));
 
-        volume.setOnSeekBarChangeListener(
+        volumen.setProgressTintList(
+                android.content.res.ColorStateList.valueOf(
+                        0xFF1877F2));
+        volumen.setThumbTintList(
+                android.content.res.ColorStateList.valueOf(
+                        0xFF1877F2));
+
+        filaVolumen.addView(volumen,
+                new LinearLayout.LayoutParams(0, 55, 1));
+
+        TextView mas = texto("♪", 25, Color.WHITE);
+        filaVolumen.addView(mas);
+
+        volumen.setOnSeekBarChangeListener(
                 new SeekBar.OnSeekBarChangeListener() {
+            @Override
             public void onProgressChanged(
-                    SeekBar bar, int value, boolean fromUser) {
-                if (fromUser) {
+                    SeekBar bar, int valor, boolean usuario) {
+                if (usuario) {
                     audio.setStreamVolume(
                             AudioManager.STREAM_MUSIC,
-                            value, 0);
+                            valor, 0);
                 }
             }
+
+            @Override
             public void onStartTrackingTouch(SeekBar bar) {}
+
+            @Override
             public void onStopTrackingTouch(SeekBar bar) {}
         });
 
-        root.addView(volume);
+        pagina.addView(filaVolumen);
 
-        Button exit = button("SALIR Y APAGAR RADIO",
-                Color.rgb(35, 45, 65));
+        espacio(pagina, 30);
 
-        LinearLayout.LayoutParams exitParams =
-                new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, 65);
-        exitParams.setMargins(0, 25, 0, 0);
-        root.addView(exit, exitParams);
+        LinearLayout redes = new LinearLayout(this);
+        redes.setGravity(Gravity.CENTER);
+        redes.setOrientation(LinearLayout.HORIZONTAL);
 
-        exit.setOnClickListener(v -> {
-            sendRadioCommand(RadioService.STOP);
-            finish();
+        String[] nombres = {
+                "f", "𝕏", "◎", "✆", "▶", "🌐"
+        };
+
+        String[] enlaces = {
+                "https://www.facebook.com/massradiohn",
+                "https://x.com/Mass_Radiohn",
+                "https://www.instagram.com/massradiohn/",
+                "https://wa.me/",
+                "https://www.youtube.com/@MassRadiohn",
+                "https://massradioh.com"
+        };
+
+        int[] colores = {
+                0xFF1877F2, 0xFF222222,
+                0xFFC13584, 0xFF25D366,
+                0xFFFF0000, 0xFF1685D9
+        };
+
+        for (int n = 0; n < nombres.length; n++) {
+            final String enlace = enlaces[n];
+
+            TextView red = texto(
+                    nombres[n], 21, Color.WHITE);
+            red.setTypeface(null, Typeface.BOLD);
+            red.setBackground(fondo(colores[n], 100));
+
+            LinearLayout.LayoutParams rp =
+                    new LinearLayout.LayoutParams(48, 48);
+            rp.setMargins(4, 0, 4, 0);
+
+            redes.addView(red, rp);
+            red.setOnClickListener(v -> abrir(enlace));
+        }
+
+        pagina.addView(redes);
+
+        espacio(pagina, 45);
+
+        botonPlay = texto("▶", 48, Color.WHITE);
+        botonPlay.setBackground(
+                fondo(0xFF1469F5, 200));
+
+        LinearLayout.LayoutParams bp =
+                new LinearLayout.LayoutParams(112, 112);
+        bp.gravity = Gravity.CENTER;
+        pagina.addView(botonPlay, bp);
+
+        botonPlay.setOnClickListener(v -> {
+            if (reproduciendo) {
+                comando(RadioService.STOP);
+                reproduciendo = false;
+                estado.setText("Reproducción detenida");
+            } else {
+                comando(RadioService.PLAY);
+                reproduciendo = true;
+                estado.setText("Conectando...");
+            }
+            actualizarBoton();
         });
 
-        setContentView(root);
+        espacio(pagina, 45);
+
+        TextView salir = texto(
+                "⏻  SALIR Y APAGAR RADIO",
+                15, Color.WHITE);
+        salir.setBackground(
+                fondo(0xFF303030, 24));
+        salir.setPadding(20, 16, 20, 16);
+
+        pagina.addView(salir);
+
+        salir.setOnClickListener(v -> {
+            comando(RadioService.STOP);
+            finish();
+        });
     }
 
     @Override
     protected void onStart() {
         super.onStart();
 
-        IntentFilter filter =
+        IntentFilter filtro =
                 new IntentFilter(RadioService.STATUS);
 
         if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(receiver, filter,
+            registerReceiver(receptor, filtro,
                     Context.RECEIVER_NOT_EXPORTED);
         } else {
-            registerReceiver(receiver, filter);
+            registerReceiver(receptor, filtro);
         }
     }
 
     @Override
     protected void onStop() {
-        unregisterReceiver(receiver);
+        unregisterReceiver(receptor);
         super.onStop();
     }
 }
