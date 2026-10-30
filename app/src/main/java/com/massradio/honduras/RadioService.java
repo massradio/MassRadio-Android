@@ -5,23 +5,25 @@ import android.app.*;
 import android.content.*;
 import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
-import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.IBinder;
 
 public class RadioService extends Service {
 
-    public static final String PLAY = "com.massradio.honduras.PLAY";
-    public static final String STOP = "com.massradio.honduras.STOP";
-    public static final String STATUS = "com.massradio.honduras.STATUS";
+    public static final String PLAY =
+            "com.massradio.honduras.PLAY";
+    public static final String STOP =
+            "com.massradio.honduras.STOP";
+    public static final String STATUS =
+            "com.massradio.honduras.STATUS";
 
     private static final String STREAM =
             "https://radiostreaming.pro/8430/stream";
     private static final String CHANNEL = "massradio_live";
 
     private MediaPlayer player;
-    private boolean started = false;
+    private boolean playing = false;
     private int generation = 0;
 
     @Override
@@ -29,15 +31,17 @@ public class RadioService extends Service {
         super.onCreate();
 
         if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL,
-                    "MassRadio en vivo",
-                    NotificationManager.IMPORTANCE_LOW
-            );
+            NotificationChannel channel =
+                    new NotificationChannel(
+                            CHANNEL,
+                            "MassRadio en vivo",
+                            NotificationManager.IMPORTANCE_LOW
+                    );
 
             NotificationManager manager =
                     (NotificationManager) getSystemService(
                             NOTIFICATION_SERVICE);
+
             manager.createNotificationChannel(channel);
         }
     }
@@ -113,7 +117,7 @@ public class RadioService extends Service {
         }
 
         if (PLAY.equals(action)) {
-            if (!started) {
+            if (!playing) {
                 startRadio();
             }
         }
@@ -122,16 +126,17 @@ public class RadioService extends Service {
     }
 
     private void startRadio() {
-        started = true;
+        playing = true;
         final int currentGeneration = ++generation;
 
         foreground("Conectando...");
         status("Conectando...");
 
         try {
-            player = new MediaPlayer();
+            MediaPlayer newPlayer = new MediaPlayer();
+            player = newPlayer;
 
-            player.setAudioAttributes(
+            newPlayer.setAudioAttributes(
                     new AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
                             .setContentType(
@@ -139,35 +144,38 @@ public class RadioService extends Service {
                             .build()
             );
 
-            player.setDataSource(STREAM);
+            newPlayer.setDataSource(STREAM);
 
-            player.setOnPreparedListener(mp -> {
-                if (started &&
-                        currentGeneration == generation) {
+            newPlayer.setOnPreparedListener(mp -> {
+                if (playing &&
+                        currentGeneration == generation &&
+                        player == mp) {
                     mp.start();
                     foreground("Radio en vivo");
                     status("Reproduciendo en vivo");
                 }
             });
 
-            player.setOnErrorListener((mp, what, extra) -> {
+            newPlayer.setOnErrorListener((mp, what, extra) -> {
                 if (currentGeneration == generation) {
                     stopRadio();
+                    status("Error de conexión");
                     stopSelf();
                 }
                 return true;
             });
 
-            player.prepareAsync();
+            newPlayer.prepareAsync();
 
         } catch (Exception e) {
             stopRadio();
+            status("Error de conexión");
             stopSelf();
         }
     }
 
     private void stopRadio() {
-        started = false;
+        playing = false;
         generation++;
 
         MediaPlayer oldPlayer = player;
