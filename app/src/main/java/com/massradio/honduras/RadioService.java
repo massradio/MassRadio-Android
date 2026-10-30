@@ -1,3 +1,4 @@
+
 package com.massradio.honduras;
 
 import android.app.*;
@@ -10,17 +11,199 @@ import android.os.Build;
 import android.os.IBinder;
 
 public class RadioService extends Service {
- public static final String PLAY="com.massradio.honduras.PLAY", STOP="com.massradio.honduras.STOP", STATUS="com.massradio.honduras.STATUS";
- private static final String STREAM="https://radiostreaming.pro/8430/stream", CHANNEL="massradio_live";
- private MediaPlayer player;
- private boolean started=false;
- @Override public void onCreate(){super.onCreate();NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);if(Build.VERSION.SDK_INT>=26)nm.createNotificationChannel(new NotificationChannel(CHANNEL,"Radio en vivo",NotificationManager.IMPORTANCE_LOW));}
- private Notification notification(String msg){Intent open=new Intent(this,MainActivity.class);PendingIntent pi=PendingIntent.getActivity(this,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);Intent stop=new Intent(this,RadioService.class).setAction(STOP);PendingIntent si=PendingIntent.getService(this,1,stop,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL):new Notification.Builder(this);return b.setSmallIcon(android.R.drawable.ic_media_play).setContentTitle("MassRadio • En vivo").setContentText(msg).setContentIntent(pi).setOngoing(true).addAction(android.R.drawable.ic_media_pause,"Detener",si).build();}
- private void foreground(String msg){if(Build.VERSION.SDK_INT>=29)startForeground(17,notification(msg),ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);else startForeground(17,notification(msg));}
- private void status(String s){Intent i=new Intent(STATUS);i.setPackage(getPackageName());i.putExtra("status",s);sendBroadcast(i);}
- @Override public int onStartCommand(Intent i,int flags,int id){String action=i==null?null:i.getAction();if(STOP.equals(action)){stopRadio();stopSelf();return START_NOT_STICKY;}if(PLAY.equals(action)){if(!started)startRadio();return START_STICKY;}return START_NOT_STICKY;}
- private void startRadio(){started=true;foreground("Conectando...");status("Conectando...");try{player=new MediaPlayer();player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());player.setDataSource(STREAM);player.setOnPreparedListener(mp->{if(started){mp.start();foreground("Reproduciendo ahora");status("Reproduciendo MassRadio");}});player.setOnErrorListener((mp,what,extra)->{status("No se pudo reproducir. Intentá nuevamente.");stopRadio();stopSelf();return true;});player.prepareAsync();}catch(Exception e){status("Error al conectar. Intentá nuevamente.");stopRadio();stopSelf();}}
- private void stopRadio(){started=false;if(player!=null){try{player.stop();}catch(Exception ignored){}player.release();player=null;}stopForeground(STOP_FOREGROUND_REMOVE);status("Reproducción detenida");}
- @Override public void onDestroy(){stopRadio();super.onDestroy();}
- @Override public IBinder onBind(Intent i){return null;}
+
+    public static final String PLAY = "com.massradio.honduras.PLAY";
+    public static final String STOP = "com.massradio.honduras.STOP";
+    public static final String STATUS = "com.massradio.honduras.STATUS";
+
+    private static final String STREAM =
+            "https://radiostreaming.pro/8430/stream";
+    private static final String CHANNEL = "massradio_live";
+
+    private MediaPlayer player;
+    private boolean started = false;
+    private int generation = 0;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL,
+                    "MassRadio en vivo",
+                    NotificationManager.IMPORTANCE_LOW
+            );
+
+            NotificationManager manager =
+                    (NotificationManager) getSystemService(
+                            NOTIFICATION_SERVICE);
+            manager.createNotificationChannel(channel);
+        }
+    }
+
+    private Notification notification(String message) {
+        Intent open = new Intent(this, MainActivity.class);
+
+        PendingIntent openIntent = PendingIntent.getActivity(
+                this, 0, open,
+                PendingIntent.FLAG_UPDATE_CURRENT |
+                PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Intent stop = new Intent(this, RadioService.class);
+        stop.setAction(STOP);
+
+        PendingIntent stopIntent = PendingIntent.getService(
+                this, 1, stop,
+                PendingIntent.FLAG_UPDATE_CURRENT |
+                PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Notification.Builder builder =
+                Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(this, CHANNEL)
+                : new Notification.Builder(this);
+
+        return builder
+                .setContentTitle("MassRadio")
+                .setContentText(message)
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentIntent(openIntent)
+                .setOngoing(true)
+                .addAction(
+                        android.R.drawable.ic_media_pause,
+                        "DETENER",
+                        stopIntent
+                )
+                .build();
+    }
+
+    private void foreground(String message) {
+        Notification n = notification(message);
+
+        if (Build.VERSION.SDK_INT >= 29) {
+            startForeground(
+                    17, n,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            );
+        } else {
+            startForeground(17, n);
+        }
+    }
+
+    private void status(String message) {
+        Intent intent = new Intent(STATUS);
+        intent.setPackage(getPackageName());
+        intent.putExtra("status", message);
+        sendBroadcast(intent);
+    }
+
+    @Override
+    public int onStartCommand(
+            Intent intent, int flags, int startId) {
+
+        String action = intent == null
+                ? null : intent.getAction();
+
+        if (STOP.equals(action)) {
+            stopRadio();
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        if (PLAY.equals(action)) {
+            if (!started) {
+                startRadio();
+            }
+        }
+
+        return START_NOT_STICKY;
+    }
+
+    private void startRadio() {
+        started = true;
+        final int currentGeneration = ++generation;
+
+        foreground("Conectando...");
+        status("Conectando...");
+
+        try {
+            player = new MediaPlayer();
+
+            player.setAudioAttributes(
+                    new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(
+                                    AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build()
+            );
+
+            player.setDataSource(STREAM);
+
+            player.setOnPreparedListener(mp -> {
+                if (started &&
+                        currentGeneration == generation) {
+                    mp.start();
+                    foreground("Radio en vivo");
+                    status("Reproduciendo en vivo");
+                }
+            });
+
+            player.setOnErrorListener((mp, what, extra) -> {
+                if (currentGeneration == generation) {
+                    stopRadio();
+                    stopSelf();
+                }
+                return true;
+            });
+
+            player.prepareAsync();
+
+        } catch (Exception e) {
+            stopRadio();
+            stopSelf();
+        }
+    }
+
+    private void stopRadio() {
+        started = false;
+        generation++;
+
+        MediaPlayer oldPlayer = player;
+        player = null;
+
+        if (oldPlayer != null) {
+            try {
+                oldPlayer.reset();
+            } catch (Exception ignored) {
+            }
+
+            try {
+                oldPlayer.release();
+            } catch (Exception ignored) {
+            }
+        }
+
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        status("Reproducción detenida");
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        stopRadio();
+        stopSelf();
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
+    public void onDestroy() {
+        stopRadio();
+        super.onDestroy();
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
 }
